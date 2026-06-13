@@ -1,0 +1,35 @@
+{
+  "name": "@enduroq/enduroq",
+  "version": "1.0.0",
+  "description": "",
+  "type": "module",
+  "main": "dist/server.js",
+  "scripts": {
+    "build": "tsc",
+    "check": "tsgo",
+    "serve": "cross-env ENDUROQ_LOG_LEVEL=debug tsx watch src/server.ts",
+    "start": "node dist/server.js"
+  },
+  "keywords": [],
+  "author": {
+    "email": "me@natsuneko.cat",
+    "name": "Kanon MOCHIZUKI",
+    "url": "https://natsuneko.cat"
+  },
+  "license": "MIT",
+  "packageManager": "pnpm@10.4.1",
+  "dependencies": {
+    "@hono/node-server": "^2.0.4",
+    "hono": "^4.12.25",
+    "mysql2": "^3.22.5",
+    "pino": "^10.3.1",
+    "uuid": "^14.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^25.9.3",
+    "@typescript/native-preview": "7.0.0-dev.20260421.2",
+    "cross-env": "^10.1.0",
+    "tsx": "^4.22.4",
+    "typescript": "^6.0.3"
+  }
+}

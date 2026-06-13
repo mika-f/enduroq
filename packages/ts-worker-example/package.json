@@ -1,0 +1,30 @@
+{
+  "name": "@enduroq/ts-worker-example",
+  "version": "1.0.0",
+  "description": "",
+  "scripts": {
+    "build": "tsc",
+    "check": "tsgo",
+    "serve": "next dev --port=8080"
+  },
+  "keywords": [],
+  "author": {
+    "email": "me@natsuneko.cat",
+    "name": "Kanon MOCHIZUKI",
+    "url": "https://natsuneko.cat"
+  },
+  "license": "MIT",
+  "packageManager": "pnpm@10.4.1",
+  "dependencies": {
+    "@enduroq/enduroq-worker": "workspace:*",
+    "next": "16.2.9",
+    "react": "19.2.4",
+    "react-dom": "19.2.4"
+  },
+  "devDependencies": {
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "typescript": "^5"
+  }
+}

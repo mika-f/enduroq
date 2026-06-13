@@ -1,0 +1,21 @@
+{
+  "name": "enduroq",
+  "version": "0.1.0",
+  "description": "A durable HTTP-based job queue system backed by MySQL for long-running, language-agnostic workers.",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "packageManager": "pnpm@10.4.1",
+  "devDependencies": {
+    "@oxfmt/binding-darwin-arm64": "^0.54.0",
+    "@oxfmt/binding-win32-x64-msvc": "^0.54.0",
+    "@oxlint/binding-darwin-arm64": "^1.69.0",
+    "@oxlint/binding-win32-x64-msvc": "^1.69.0",
+    "oxfmt": "^0.54.0",
+    "oxlint": "^1.69.0",
+    "turbo": "^2.9.18"
+  }
+}

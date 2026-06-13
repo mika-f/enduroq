@@ -1,0 +1,44 @@
+services:
+  mysql:
+    image: mysql:8.0
+    command: ["--default-time-zone=+00:00"]
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpw
+      MYSQL_DATABASE: enduroq
+    ports:
+      - "3306:3306"
+    volumes:
+      - ./packages/sql-schema/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-prootpw"]
+      interval: 3s
+      timeout: 3s
+      retries: 30
+
+  queue:
+    build: ./packages/ts-server
+    depends_on:
+      mysql:
+        condition: service_healthy
+    environment:
+      ENDUROQ_PORT: "7225"
+      ENDUROQ_SERVER_URL: "http://queue:7225"
+      ENDUROQ_DB_HOST: mysql
+      ENDUROQ_DB_PORT: "3306"
+      ENDUROQ_DB_USER: root
+      ENDUROQ_DB_PASSWORD: rootpw
+      ENDUROQ_DB_NAME: enduroq
+      ENDUROQ_LEASE_SEC: "15"
+      ENDUROQ_ACK_GRACE_SEC: "10"
+    ports:
+      - "7225:7225"
+
+  worker:
+    build: ./
+    depends_on:
+      - queue
+    environment:
+      HEARTBEAT_MS: "4000"
+      LEASE_EXTEND_SEC: "15"
+    ports:
+      - "8080:8080"
