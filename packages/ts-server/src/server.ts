@@ -11,8 +11,9 @@ import type { BackoffParams } from "./utils/backoff.js";
 const PORT = Number(process.env.ENDUROQ_PORT ?? 7225);
 
 // configuration
-const LEASE_IN_SEC = Number(process.env.ENDUROQ_LEASE_IN_SEC ?? 60);
-const ACK_GRACE_IN_SEC = Number(process.env.ENDUROQ_ACK_GRACE_IN_SEC ?? 30);
+const LEASE = Number(process.env.ENDUROQ_LEASE_IN_SEC ?? 60);
+const ACK_GRACE = Number(process.env.ENDUROQ_ACK_GRACE_IN_SEC ?? 30);
+const NACK_BACKOFF = Number(process.env.ENDUROQ_NACK_BACKOFF_IN_SEC ?? 5);
 const SERVER_URL = process.env.ENDUROQ_SERVER_URL ?? `http://127.0.0.1:${PORT}`;
 
 // database
@@ -25,17 +26,27 @@ const DB_CONNECTION_LIMIT = Number(process.env.ENDUROQ_DB_CONNECTION ?? 16);
 
 // queues
 const QUEUES = (process.env.ENDUROQ_QUEUES ?? "default").split(",");
+const WORKER_PER_QUEUE = Number(process.env.ENDUROQ_WORKER_PER_QUEUE ?? 4);
 
 // logger
 const LOG_LEVEL = process.env.ENDUROQ_LOG_LEVEL ?? "error";
 const logger = pino({ level: LOG_LEVEL });
 
 // backoff
+const BACKOFF_BASE = Number(process.env.ENDUROQ_BACKOFF_BASE_IN_SEC ?? 2);
+const BACKOFF_CAP = Number(process.env.ENDUROQ_BACKOFF_CAP_IN_SEC ?? 300);
+const BACKOFF_JITTER = Number(process.env.ENDUROQ_BACKOFF_JITTER_IN_SEC ?? 5);
 const BACKOFF: BackoffParams = {
-  base: 2,
-  cap: 300,
-  jitter: 5,
+  base: BACKOFF_BASE,
+  cap: BACKOFF_CAP,
+  jitter: BACKOFF_JITTER,
 };
+
+// dispatcher
+const DISPATCHER_POLL = Number(process.env.ENDUROQ_DISPATCH_POLL_MS ?? 500);
+
+// reaper
+const REAPER_INTERVAL = Number(process.env.ENDUROQ_REAPER_INTERVAL_IN_SEC ?? 5);
 
 const main = async () => {
   const pool = mysql.createPool({
@@ -49,11 +60,11 @@ const main = async () => {
   });
   const jobRepository = new JobRepository(pool, logger);
   const dispatcher = new Dispatcher(jobRepository, QUEUES, logger, {
-    ackGraceInSec: ACK_GRACE_IN_SEC,
-    leaseInSec: LEASE_IN_SEC,
-    nackBackOffInSec: 5,
-    pollIntervalInMs: 500,
-    workersPerQueue: 4,
+    ackGraceInSec: ACK_GRACE,
+    leaseInSec: LEASE,
+    nackBackOffInSec: NACK_BACKOFF,
+    pollIntervalInMs: DISPATCHER_POLL,
+    workersPerQueue: WORKER_PER_QUEUE,
     serverUrl: SERVER_URL,
   });
   dispatcher.start();
@@ -72,7 +83,7 @@ const main = async () => {
       .catch((e) => {
         logger.error(e, `reaper`);
       });
-  }, 1000 * 5);
+  }, 1000 * REAPER_INTERVAL);
 
   const app = new Hono();
   app.use(honoLogger());
@@ -111,7 +122,7 @@ const main = async () => {
     const res = await jobRepository.heartbeat(
       id,
       token,
-      extendSeconds ? Number(extendSeconds) : LEASE_IN_SEC,
+      extendSeconds ? Number(extendSeconds) : LEASE,
     );
 
     if (res.ok) {
