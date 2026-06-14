@@ -29,7 +29,7 @@ const QUEUES = (process.env.ENDUROQ_QUEUES ?? "default").split(",");
 const WORKER_PER_QUEUE = Number(process.env.ENDUROQ_WORKER_PER_QUEUE ?? 4);
 
 // logger
-const LOG_LEVEL = process.env.ENDUROQ_LOG_LEVEL ?? "error";
+const LOG_LEVEL = process.env.ENDUROQ_LOG_LEVEL ?? "info";
 const logger = pino({ level: LOG_LEVEL });
 
 // backoff
@@ -49,6 +49,29 @@ const DISPATCHER_POLL = Number(process.env.ENDUROQ_DISPATCH_POLL_MS ?? 500);
 const REAPER_INTERVAL = Number(process.env.ENDUROQ_REAPER_INTERVAL_IN_SEC ?? 5);
 
 const main = async () => {
+  logger.debug(
+    {
+      port: PORT,
+      serverUrl: SERVER_URL,
+      queues: QUEUES,
+      workersPerQueue: WORKER_PER_QUEUE,
+      leaseInSec: LEASE,
+      ackGraceInSec: ACK_GRACE,
+      nackBackoffInSec: NACK_BACKOFF,
+      dispatchPollMs: DISPATCHER_POLL,
+      reaperIntervalSec: REAPER_INTERVAL,
+      backoff: BACKOFF,
+      db: {
+        host: DB_HOST,
+        port: DB_PORT,
+        user: DB_USER,
+        name: DB_NAME,
+        connectionLimit: DB_CONNECTION_LIMIT,
+      },
+    },
+    "enduroq configuration",
+  );
+
   const pool = mysql.createPool({
     host: DB_HOST,
     port: DB_PORT,
@@ -76,21 +99,30 @@ const main = async () => {
       .then((r) => {
         if (r.requeued || r.failed) {
           logger.info(
-            `[info] reaper requeued ${r.requeued} jobs and failed ${r.failed} jobs`,
+            { requeued: r.requeued, failed: r.failed },
+            "reaper: reaped expired leases",
           );
+        } else {
+          logger.debug("reaper: no expired leases");
         }
       })
       .catch((e) => {
-        logger.error(e, `reaper`);
+        logger.error(e, "reaper: unexpected error");
       });
   }, 1000 * REAPER_INTERVAL);
 
   const app = new Hono();
-  app.use(honoLogger());
+  app.use(
+    honoLogger((str) => {
+      logger.info({ type: "http" }, str);
+    }),
+  );
+
   // POST /jobs/:queue
   app.post("/jobs/:queue", async (c) => {
     const queue = c.req.param("queue");
     if (!QUEUES.includes(queue)) {
+      logger.warn({ queue }, "enqueue rejected: unknown queue");
       return c.json({ error: "queue not found" }, 404);
     }
 
@@ -105,6 +137,15 @@ const main = async () => {
       queue,
     );
 
+    logger.info(
+      {
+        jobId: id,
+        queue,
+        url: body.url as string,
+        maxRetries: Number(body?.max_retries ?? 0),
+      },
+      "job enqueued",
+    );
     return c.json({ id }, 201);
   });
 
@@ -115,6 +156,7 @@ const main = async () => {
     const token = body.lease_token as string | undefined;
 
     if (!token) {
+      logger.warn({ jobId: id }, "heartbeat rejected: missing lease_token");
       return c.json({ error: "lease_token is required" }, 400);
     }
 
@@ -126,8 +168,13 @@ const main = async () => {
     );
 
     if (res.ok) {
+      logger.debug(
+        { jobId: id, leaseExpiresAt: res.leaseExpiresAt },
+        "heartbeat: lease extended",
+      );
       return c.json({ lease_expires_at: res.leaseExpiresAt }, 200);
     } else {
+      logger.warn({ jobId: id }, "heartbeat: lease already expired");
       return c.json({ error: "lease already expired" }, 409);
     }
   });
@@ -139,6 +186,7 @@ const main = async () => {
     const token = body.lease_token as string | undefined;
 
     if (!token) {
+      logger.warn({ jobId: id }, "result rejected: missing lease_token");
       return c.json({ error: "lease_token is required" }, 400);
     }
 
@@ -147,8 +195,13 @@ const main = async () => {
     if (status === "success") {
       const ok = await jobRepository.succeed(id, token, body.output);
       if (ok) {
+        logger.info({ jobId: id }, "job succeeded");
         return c.json({ ok: true }, 200);
       } else {
+        logger.warn(
+          { jobId: id },
+          "job result rejected: lease already expired",
+        );
         return c.json({ error: "lease already expired" }, 409);
       }
     }
@@ -160,10 +213,15 @@ const main = async () => {
       if (ok) {
         return c.json({ ok: true }, 200);
       } else {
+        logger.warn(
+          { jobId: id },
+          "job result rejected: lease already expired",
+        );
         return c.json({ error: "lease already expired" }, 409);
       }
     }
 
+    logger.warn({ jobId: id, status }, "job result rejected: invalid status");
     return c.json({ error: "invalid status" }, 400);
   });
 
@@ -172,9 +230,11 @@ const main = async () => {
     const id = Number(c.req.param("id"));
     const job = await jobRepository.get(id);
     if (job) {
+      logger.debug({ jobId: id, status: job.status }, "job status queried");
       return c.json({ ...job }, 200);
     }
 
+    logger.debug({ jobId: id }, "job status query: not found");
     return c.json({ error: "job not found" }, 404);
   });
 
@@ -182,19 +242,21 @@ const main = async () => {
     fetch: app.fetch,
     port: PORT,
   });
-  logger.info(`[info] start listening server at 127.0.0.1:${PORT}`);
+  logger.info({ port: PORT }, "server listening");
 
   const shutdown = async () => {
-    logger.info(`[info] shutting down server...`);
+    logger.info("shutting down: stopping reaper and dispatcher");
     clearInterval(reaper);
     await dispatcher.stop();
+    logger.debug("closing database pool");
     await pool.end();
     server.close((err) => {
       if (err) {
-        logger.error(err, "[error] server error");
+        logger.error(err, "server close error");
         process.exit(1);
       }
 
+      logger.info("server shut down cleanly");
       process.exit(0);
     });
   };
@@ -206,6 +268,6 @@ const main = async () => {
 main()
   .then(() => {})
   .catch((err) => {
-    logger.error(err, "[error] fatal error");
+    logger.fatal(err, "fatal startup error");
     process.exit(1);
   });

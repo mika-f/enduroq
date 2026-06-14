@@ -48,10 +48,14 @@ export interface JobRow {
 }
 
 export class JobRepository {
+  private readonly log: pino.Logger;
+
   public constructor(
     private readonly pool: Pool,
-    private readonly logger: pino.Logger,
-  ) {}
+    logger: pino.Logger,
+  ) {
+    this.log = logger.child({ module: "repository" });
+  }
 
   public async enqueue(input: EnqueueRequest, name: string): Promise<number> {
     const [res] = await this.pool.query<ResultSetHeader>(
@@ -130,7 +134,7 @@ export class JobRepository {
         payload: safeParseJSON(row.payload),
       };
     } catch (e) {
-      this.logger.error(e, `[error] failed to grab job of ${name}`);
+      this.log.error({ queue: name, err: e }, "failed to grab job");
       throw e;
     } finally {
       conn.release();
@@ -293,6 +297,16 @@ export class JobRepository {
           `,
           [nextBackoff, error, id],
         );
+        this.log.info(
+          {
+            jobId: id,
+            attempt,
+            maxRetries,
+            nextRetryInSec: nextBackoff,
+            error,
+          },
+          "job failed, scheduled for retry",
+        );
       } else {
         await conn.query(
           `
@@ -302,16 +316,17 @@ export class JobRepository {
           `,
           [error, id],
         );
+        this.log.warn(
+          { jobId: id, attempt, maxRetries, error },
+          "job permanently failed (retries exhausted)",
+        );
       }
 
       await conn.commit();
       return true;
     } catch (e) {
       await conn.rollback();
-      this.logger.error(
-        e,
-        `[error] failed to mark job(id=${id}, token=${leaseToken}) as failed`,
-      );
+      this.log.error({ jobId: id, err: e }, "failed to mark job as failed");
       throw e;
     } finally {
       conn.release();

@@ -30,6 +30,7 @@ services:
       ENDUROQ_DB_NAME: enduroq
       ENDUROQ_LEASE_SEC: "15"
       ENDUROQ_ACK_GRACE_SEC: "10"
+      ENDUROQ_LOG_LEVEL: "debug"
     ports:
       - "7225:7225"
 
