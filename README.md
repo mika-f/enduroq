@@ -54,12 +54,14 @@ Inspired by [Fireworq](https://github.com/fireworq/fireworq), Enduroq extends th
 │  (N workers × M queues)             │
 │                                     │
 │  loop()  ──tick()──► HTTP POST ──► Worker
-│                                     │  ├── 2xx  → mark running
+│                                     │  ├── 202  → mark running (async)
+│                                     │  ├── 200 {status:"success"}  → succeed immediately (sync)
+│                                     │  ├── 200 {status:"failure"} → fail/retry immediately (sync)
 │                                     │  ├── 503  → nack (requeue w/ backoff)
 │                                     │  ├── 4xx  → reject (mark failed)
 │                                     │  └── 5xx / network → unknown (leave)
 └─────────────────────────────────────┘
-                                Worker (any HTTP service)
+                                Async worker (long-running)
                                   │
                                   ├── heartbeat loop ──► POST /jobs/:id/heartbeat
                                   │     └── 409  → lease gone, abort job
@@ -83,14 +85,16 @@ Inspired by [Fireworq](https://github.com/fireworq/fireworq), Enduroq extends th
 
 1. **Enqueue** — Client POSTs to `/jobs/:queue`; job is inserted with `status = queued`.
 2. **Grab** — Dispatcher selects the next eligible job using `SELECT … FOR UPDATE SKIP LOCKED`, generates a UUID lease token, and sets `status = dispatching`.
-3. **Dispatch** — Dispatcher POSTs the job payload (including callback URL and lease token) to the worker URL.
-4. **Running** — On a `2xx` response the server sets `status = running` and extends the lease.
-5. **Heartbeat** — Worker periodically POSTs to `/jobs/:id/heartbeat` to prevent lease expiry.
-6. **Result** — Worker POSTs to `/jobs/:id/result`:
+3. **Dispatch** — Dispatcher POSTs the job payload (including callback URL and lease token) to the worker URL. The request times out after `ENDUROQ_TIMEOUT_IN_MS` milliseconds.
+4. The worker chooses one of two response modes:
+   - **Sync** (`200 OK` + `{ status: "success"|"failure", ... }`) — the dispatcher finalizes the job immediately, no heartbeat needed.
+   - **Async** (`202 Accepted`) — the server sets `status = running` and extends the lease; the worker continues processing in the background.
+5. **Heartbeat** (async only) — Worker periodically POSTs to `/jobs/:id/heartbeat` to prevent lease expiry.
+6. **Result** (async only) — Worker POSTs to `/jobs/:id/result`:
    - `status: success` → `status = succeeded`
    - `status: failure, retryable: true` (and retries remain) → requeue with backoff
    - `status: failure, retryable: false` or retries exhausted → `status = failed`
-7. **Reaping** — If a lease expires before a result arrives, the Reaper requeues (or fails) the job automatically.
+7. **Reaping** — If an async worker's lease expires before a result arrives, the Reaper requeues (or fails) the job automatically.
 
 ---
 
@@ -197,8 +201,9 @@ All variables are optional; defaults are shown.
 
 | Variable                      | Default | Description                                                                                                                   |
 | ----------------------------- | ------- | ----------------------------------------------------------------------------------------------------------------------------- |
-| `ENDUROQ_LEASE_IN_SEC`        | `60`    | Initial lease duration after a job is dispatched                                                                              |
-| `ENDUROQ_ACK_GRACE_IN_SEC`    | `30`    | Extra grace period added to the lease when the server marks a job as `running` (i.e. after the worker's `2xx` acknowledgment) |
+| `ENDUROQ_LEASE_IN_SEC`        | `60`    | Initial lease duration after a job is dispatched (async workers)                                                              |
+| `ENDUROQ_ACK_GRACE_IN_SEC`    | `30`    | Extra grace period added to the lease when the server marks a job as `running` (i.e. after the worker's `202` acknowledgment). Must be greater than `ENDUROQ_TIMEOUT_IN_MS / 1000`. |
+| `ENDUROQ_TIMEOUT_IN_MS`       | `10000` | HTTP request timeout when dispatching to a worker. Must be less than `ENDUROQ_ACK_GRACE_IN_SEC × 1000`.                      |
 | `ENDUROQ_NACK_BACKOFF_IN_SEC` | `5`     | Delay before requeuing a job after a `503` (worker busy) response                                                             |
 
 #### Retry Backoff
@@ -259,6 +264,36 @@ Content-Type: application/json
 ```json
 { "id": 42 }
 ```
+
+---
+
+### Worker Dispatch Endpoint (Your Service)
+
+When the dispatcher sends a job to a worker URL, the worker must respond within `ENDUROQ_TIMEOUT_IN_MS` milliseconds and choose one of two modes:
+
+**Async mode** — respond `202 Accepted` to acknowledge receipt. The job enters `running` state and the worker is responsible for sending heartbeats and a final result.
+
+```
+HTTP/1.1 202 Accepted
+```
+
+**Sync mode** — respond `200 OK` with a JSON body containing `status`. The dispatcher finalizes the job immediately; no heartbeat or result call is needed.
+
+```json
+{ "status": "success", "output": { "any": "data" } }
+```
+
+```json
+{ "status": "failure", "retryable": true, "error": "reason" }
+```
+
+Other response codes:
+
+| Status | Meaning |
+|---|---|
+| `503 Service Unavailable` | Worker is busy; job is requeued after `ENDUROQ_NACK_BACKOFF_IN_SEC` seconds without consuming a retry |
+| `4xx` (other) | Permanent client error; job is marked `failed` |
+| `5xx` / network error | Outcome unknown; job remains in `dispatching` until the reaper handles it |
 
 ---
 
