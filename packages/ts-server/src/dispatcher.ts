@@ -1,16 +1,30 @@
 import pino from "pino";
 import type { GrabbedJob, JobRepository } from "./repositories/job.js";
 import { delay } from "./utils/delay.js";
+import type { BackoffParams } from "./utils/backoff.js";
 
-type DispatchOutcome = "accepted" | "busy" | "reject" | "unknown";
+type DispatchOutcome =
+  | { kind: "accepted" }
+  | {
+      kind: "result";
+      success: boolean;
+      retryable: boolean;
+      output?: unknown;
+      error?: string;
+    }
+  | { kind: "busy" }
+  | { kind: "reject" }
+  | { kind: "unknown" };
 
 export interface DispatcherOptions {
   ackGraceInSec: number;
   leaseInSec: number;
   nackBackOffInSec: number;
   pollIntervalInMs: number;
+  timeoutInMs: number;
   workersPerQueue: number;
   serverUrl: string;
+  backoff: BackoffParams;
   fetchImpl?: typeof fetch;
 }
 
@@ -85,7 +99,7 @@ export class Dispatcher {
     );
 
     const outcome = await this.dispatch(job, log);
-    switch (outcome) {
+    switch (outcome.kind) {
       case "accepted":
         await this.jobRepository.ack(
           job.id,
@@ -93,6 +107,24 @@ export class Dispatcher {
           this.opts.leaseInSec,
         );
         log.info({ jobId: job.id, url: job.url }, "job accepted by worker");
+        break;
+
+      case "result":
+        if (outcome.success) {
+          await this.jobRepository.succeed(
+            job.id,
+            job.leaseToken,
+            outcome.output,
+          );
+        } else {
+          await this.jobRepository.fail(
+            job.id,
+            job.leaseToken,
+            outcome.retryable,
+            outcome.error!,
+            this.opts.backoff,
+          );
+        }
         break;
 
       case "busy":
@@ -142,6 +174,7 @@ export class Dispatcher {
       { jobId: job.id, url: job.url },
       "sending dispatch request to worker",
     );
+    const signal = AbortSignal.timeout(this.opts.timeoutInMs);
     try {
       const res = await this.fetchImpl(job.url, {
         method: "POST",
@@ -154,6 +187,7 @@ export class Dispatcher {
           lease_token: job.leaseToken,
           data: job.payload,
         }),
+        signal,
       });
 
       log.debug(
@@ -162,24 +196,51 @@ export class Dispatcher {
       );
 
       if (res.ok) {
-        return "accepted";
+        if (res.status === 202) {
+          return { kind: "accepted" };
+        }
+
+        const body = (await res.json().catch(() => null)) as {
+          status?: string;
+          retryable?: boolean;
+          output?: unknown;
+          error?: string;
+        } | null;
+        if (body && typeof body.status === "string") {
+          return body.status === "success"
+            ? {
+                kind: "result",
+                success: true,
+                retryable: false,
+                output: body.output,
+              }
+            : {
+                kind: "result",
+                success: false,
+                retryable: body.retryable ?? true,
+                error: body.error ?? "failure",
+              };
+        }
+
+        // for backward compatibility
+        return { kind: "accepted" };
       }
 
       if (res.status === 503) {
-        return "busy";
+        return { kind: "busy" };
       }
 
       if (400 <= res.status && res.status < 500) {
-        return "reject";
+        return { kind: "reject" };
       }
 
-      return "unknown";
+      return { kind: "unknown" };
     } catch (e) {
       log.error(
         { jobId: job.id, url: job.url, err: e },
         "dispatch request failed (network error)",
       );
-      return "unknown";
+      return { kind: "unknown" };
     }
   }
 }

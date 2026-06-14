@@ -29,14 +29,14 @@ export async function POST(req: Request) {
     try {
       if (payload.data.permanent) {
         await client.result(payload.callback, jobId, {
-          token: payload.lease_token,
+          lease_token: payload.lease_token,
           status: "failure",
           retryable: false,
           error: "",
         });
       } else {
         await client.result(payload.callback, jobId, {
-          token: payload.lease_token,
+          lease_token: payload.lease_token,
           status: "failure",
           retryable: true,
           error: "",
@@ -47,5 +47,5 @@ export async function POST(req: Request) {
     }
   });
 
-  return Response.json({ ok: true }, { status: 200 });
+  return Response.json({ ok: true }, { status: 202 });
 }

@@ -22,8 +22,6 @@ export async function POST(req: Request) {
     .json()
     .then((w) => w as unknown as SendEmailJobPayload);
 
-  console.log({ payload });
-
   after(async () => {
     const ac = new AbortController();
     const job = await worker.acquire(jobId, payload, ac, {
@@ -58,5 +56,5 @@ export async function POST(req: Request) {
     }
   });
 
-  return Response.json({ ok: true }, { status: 200 });
+  return Response.json({ ok: true }, { status: 202 });
 }

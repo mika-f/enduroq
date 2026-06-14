@@ -14,6 +14,7 @@ const PORT = Number(process.env.ENDUROQ_PORT ?? 7225);
 const LEASE = Number(process.env.ENDUROQ_LEASE_IN_SEC ?? 60);
 const ACK_GRACE = Number(process.env.ENDUROQ_ACK_GRACE_IN_SEC ?? 30);
 const NACK_BACKOFF = Number(process.env.ENDUROQ_NACK_BACKOFF_IN_SEC ?? 5);
+const TIMEOUT = Number(process.env.ENDUROQ_TIMEOUT_IN_MS ?? 1000 * 10);
 const SERVER_URL = process.env.ENDUROQ_SERVER_URL ?? `http://127.0.0.1:${PORT}`;
 
 // database
@@ -59,6 +60,7 @@ const main = async () => {
       ackGraceInSec: ACK_GRACE,
       nackBackoffInSec: NACK_BACKOFF,
       dispatchPollMs: DISPATCHER_POLL,
+      timeoutMs: TIMEOUT,
       reaperIntervalSec: REAPER_INTERVAL,
       backoff: BACKOFF,
       db: {
@@ -71,6 +73,14 @@ const main = async () => {
     },
     "enduroq configuration",
   );
+
+  if (TIMEOUT / 1000 >= ACK_GRACE) {
+    logger.error(
+      { timeout: TIMEOUT / 1000, ack_grace: ACK_GRACE },
+      "(ENDUROQ_TIMEOUT_IN_MS / 1000) must be lesser than ENDUROQ_ACK_GRACE_IN_SEC",
+    );
+    process.exit(1);
+  }
 
   const pool = mysql.createPool({
     host: DB_HOST,
@@ -87,8 +97,10 @@ const main = async () => {
     leaseInSec: LEASE,
     nackBackOffInSec: NACK_BACKOFF,
     pollIntervalInMs: DISPATCHER_POLL,
+    timeoutInMs: TIMEOUT,
     workersPerQueue: WORKER_PER_QUEUE,
     serverUrl: SERVER_URL,
+    backoff: BACKOFF,
   });
   dispatcher.start();
 
