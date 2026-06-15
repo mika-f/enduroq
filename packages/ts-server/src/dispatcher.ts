@@ -185,6 +185,7 @@ export class Dispatcher {
         body: JSON.stringify({
           callback: this.opts.serverUrl,
           lease_token: job.leaseToken,
+          lease_expires_at: job.leaseExpiresAt,
           data: job.payload,
         }),
         signal,
