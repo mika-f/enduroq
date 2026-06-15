@@ -1,0 +1,33 @@
+{
+  "name": "@enduroq/admin-console",
+  "version": "1.0.0",
+  "description": "A simple web admin console for Enduroq: list jobs and inspect job status/result with live polling.",
+  "private": true,
+  "scripts": {
+    "build": "next build",
+    "check": "tsgo",
+    "serve": "next dev --port=9000",
+    "start": "next start --port=9000"
+  },
+  "keywords": [],
+  "author": {
+    "email": "me@natsuneko.cat",
+    "name": "Kanon MOCHIZUKI",
+    "url": "https://natsuneko.cat"
+  },
+  "license": "MIT",
+  "packageManager": "pnpm@10.4.1",
+  "dependencies": {
+    "next": "16.2.9",
+    "react": "19.2.4",
+    "react-dom": "19.2.4"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4",
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "tailwindcss": "^4",
+    "typescript": "^5"
+  }
+}
