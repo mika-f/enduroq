@@ -36,7 +36,9 @@ services:
       - "7225:7225"
 
   worker:
-    build: ./
+    build:
+      context: .
+      dockerfile: packages/ts-worker-example/Dockerfile
     depends_on:
       - queue
     environment:
@@ -44,3 +46,15 @@ services:
       LEASE_EXTEND_SEC: "15"
     ports:
       - "8080:8080"
+
+  admin-console:
+    build:
+      context: .
+      dockerfile: packages/admin-console/Dockerfile
+    depends_on:
+      - queue
+    environment:
+      ENDUROQ_SERVER_URL: "http://queue:7225"
+      # ENDUROQ_AUTH_TOKEN: "your-secret-token"
+    ports:
+      - "9000:9000"

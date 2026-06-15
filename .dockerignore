@@ -2,6 +2,7 @@
 **/.gitignore
 **/node_modules
 **/dist
+**/.next
 **/.turbo
 **/coverage
 **/*.tsbuildinfo
@@ -9,7 +10,3 @@
 **/npm-debug.log*
 **/yarn-debug.log*
 **/yarn-error.log*
-
-# Not needed for server image
-packages/ts-worker
-packages/ts-worker-example
