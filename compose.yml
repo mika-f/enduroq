@@ -7,8 +7,6 @@ services:
       MYSQL_DATABASE: enduroq
     ports:
       - "3306:3306"
-    volumes:
-      - ./packages/sql-schema/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
     healthcheck:
       test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-prootpw"]
       interval: 3s

@@ -14,6 +14,7 @@ Inspired by [Fireworq](https://github.com/fireworq/fireworq), Enduroq extends th
 - **Scheduled jobs** — `run_after` defers execution to a future time
 - **Graceful nack** — workers that return `503 Service Unavailable` are back-pressured without consuming a retry
 - **Optional Bearer auth** — protect enqueue and status endpoints with a shared token (`ENDUROQ_AUTH_TOKEN`)
+- **Automatic database migrations** — the queue server applies missing MySQL schema migrations on startup
 
 ---
 
@@ -109,11 +110,13 @@ docker compose up
 
 This starts:
 
-| Service  | Port | Description                           |
-| -------- | ---- | ------------------------------------- |
-| `mysql`  | 3306 | MySQL 8.0 with the schema pre-applied |
-| `queue`  | 7225 | Enduroq queue server                  |
-| `worker` | 8080 | Example Next.js worker                |
+| Service  | Port | Description            |
+| -------- | ---- | ---------------------- |
+| `mysql`  | 3306 | MySQL 8.0 database     |
+| `queue`  | 7225 | Enduroq queue server   |
+| `worker` | 8080 | Example Next.js worker |
+
+The queue server automatically applies missing database migrations on startup, so the same image works with a fresh database or an existing Enduroq database volume.
 
 Enqueue a test job:
 
@@ -144,19 +147,13 @@ curl http://localhost:7225/jobs/1
 - pnpm ≥ 10
 - MySQL 8.0
 
-### 1. Apply the database schema
+### 1. Install dependencies
 
 ```bash
-mysql -u root -p < packages/sql-schema/schema.sql
+vp install
 ```
 
-### 2. Install dependencies
-
-```bash
-vp install   # or: pnpm install
-```
-
-### 3. Start the queue server
+### 2. Start the queue server
 
 ```bash
 cd packages/ts-server
@@ -164,6 +161,8 @@ ENDUROQ_DB_HOST=127.0.0.1 \
 ENDUROQ_DB_PASSWORD=yourpassword \
 vp dev
 ```
+
+The server runs database migrations before it starts accepting HTTP traffic. If you need to inspect the initial schema manually, it is also available at `packages/sql-schema/schema.sql`.
 
 ---
 
@@ -175,22 +174,31 @@ All variables are optional; defaults are shown.
 
 #### Server
 
-| Variable             | Default                   | Description                                             |
-| -------------------- | ------------------------- | ------------------------------------------------------- |
-| `ENDUROQ_PORT`       | `7225`                    | TCP port the HTTP server listens on                     |
-| `ENDUROQ_SERVER_URL` | `http://127.0.0.1:<port>` | Public base URL sent to workers as the callback address |
+| Variable             | Default                   | Description                                                                                                                              |
+| -------------------- | ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| `ENDUROQ_PORT`       | `7225`                    | TCP port the HTTP server listens on                                                                                                      |
+| `ENDUROQ_SERVER_URL` | `http://127.0.0.1:<port>` | Public base URL sent to workers as the callback address                                                                                  |
 | `ENDUROQ_AUTH_TOKEN` | _(empty)_                 | Bearer token required to enqueue (`POST /jobs/:queue`) and query status (`GET /jobs/:id`). When unset, these routes are unauthenticated. |
 
 #### Database
 
-| Variable                | Default     | Description                |
-| ----------------------- | ----------- | -------------------------- |
-| `ENDUROQ_DB_HOST`       | `127.0.0.1` | MySQL hostname             |
-| `ENDUROQ_DB_PORT`       | `3306`      | MySQL port                 |
-| `ENDUROQ_DB_USER`       | `root`      | MySQL user                 |
-| `ENDUROQ_DB_PASSWORD`   | _(empty)_   | MySQL password             |
-| `ENDUROQ_DB_NAME`       | `enduroq`   | Database name              |
-| `ENDUROQ_DB_CONNECTION` | `16`        | MySQL connection pool size |
+| Variable                                   | Default     | Description                                                                                                                               |
+| ------------------------------------------ | ----------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| `ENDUROQ_DB_HOST`                          | `127.0.0.1` | MySQL hostname                                                                                                                            |
+| `ENDUROQ_DB_PORT`                          | `3306`      | MySQL port                                                                                                                                |
+| `ENDUROQ_DB_USER`                          | `root`      | MySQL user                                                                                                                                |
+| `ENDUROQ_DB_PASSWORD`                      | _(empty)_   | MySQL password                                                                                                                            |
+| `ENDUROQ_DB_NAME`                          | `enduroq`   | Database name                                                                                                                             |
+| `ENDUROQ_DB_CONNECTION`                    | `16`        | MySQL connection pool size                                                                                                                |
+| `ENDUROQ_DB_AUTO_MIGRATE`                  | `true`      | Apply missing database migrations during queue server startup. Set to `false` to manage migrations externally.                            |
+| `ENDUROQ_DB_MIGRATE_ONLY`                  | `false`     | Apply missing database migrations and exit without starting the HTTP server or dispatcher. Useful for Kubernetes Jobs or init containers. |
+| `ENDUROQ_DB_MIGRATION_LOCK_TIMEOUT_IN_SEC` | `60`        | Seconds to wait for the MySQL migration lock when multiple queue servers start concurrently.                                              |
+
+#### Database Migrations
+
+Enduroq records applied migrations in `enduroq_schema_migrations`. Startup migrations take a MySQL advisory lock, so running multiple replicas in Docker Compose, Kubernetes, or another orchestrator is safe: one replica applies the migration while the others wait. The server starts the dispatcher and HTTP listener only after migrations complete.
+
+For deployments that require a separate migration step, run the same image once with `ENDUROQ_DB_MIGRATE_ONLY=true`, then start the application with `ENDUROQ_DB_AUTO_MIGRATE=false`.
 
 #### Queue Management
 
@@ -201,12 +209,12 @@ All variables are optional; defaults are shown.
 
 #### Lease & Acknowledgment
 
-| Variable                      | Default | Description                                                                                                                   |
-| ----------------------------- | ------- | ----------------------------------------------------------------------------------------------------------------------------- |
-| `ENDUROQ_LEASE_IN_SEC`        | `60`    | Initial lease duration after a job is dispatched (async workers)                                                              |
+| Variable                      | Default | Description                                                                                                                                                                         |
+| ----------------------------- | ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ENDUROQ_LEASE_IN_SEC`        | `60`    | Initial lease duration after a job is dispatched (async workers)                                                                                                                    |
 | `ENDUROQ_ACK_GRACE_IN_SEC`    | `30`    | Extra grace period added to the lease when the server marks a job as `running` (i.e. after the worker's `202` acknowledgment). Must be greater than `ENDUROQ_TIMEOUT_IN_MS / 1000`. |
-| `ENDUROQ_TIMEOUT_IN_MS`       | `10000` | HTTP request timeout when dispatching to a worker. Must be less than `ENDUROQ_ACK_GRACE_IN_SEC × 1000`.                      |
-| `ENDUROQ_NACK_BACKOFF_IN_SEC` | `5`     | Delay before requeuing a job after a `503` (worker busy) response                                                             |
+| `ENDUROQ_TIMEOUT_IN_MS`       | `10000` | HTTP request timeout when dispatching to a worker. Must be less than `ENDUROQ_ACK_GRACE_IN_SEC × 1000`.                                                                             |
+| `ENDUROQ_NACK_BACKOFF_IN_SEC` | `5`     | Delay before requeuing a job after a `503` (worker busy) response                                                                                                                   |
 
 #### Retry Backoff
 
@@ -317,11 +325,11 @@ HTTP/1.1 202 Accepted
 
 Other response codes:
 
-| Status | Meaning |
-|---|---|
+| Status                    | Meaning                                                                                               |
+| ------------------------- | ----------------------------------------------------------------------------------------------------- |
 | `503 Service Unavailable` | Worker is busy; job is requeued after `ENDUROQ_NACK_BACKOFF_IN_SEC` seconds without consuming a retry |
-| `4xx` (other) | Permanent client error; job is marked `failed` |
-| `5xx` / network error | Outcome unknown; job remains in `dispatching` until the reaper handles it |
+| `4xx` (other)             | Permanent client error; job is marked `failed`                                                        |
+| `5xx` / network error     | Outcome unknown; job remains in `dispatching` until the reaper handles it                             |
 
 ---
 

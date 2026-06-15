@@ -24,3 +24,14 @@ CREATE TABLE
     KEY idx_dequeue (status, name, run_after),
     KEY idx_reaper (status, lease_expires_at)
   ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4;
+
+CREATE TABLE
+  IF NOT EXISTS enduroq_schema_migrations (
+    version INT UNSIGNED NOT NULL PRIMARY KEY,
+    name VARCHAR(255) NOT NULL,
+    applied_at DATETIME (3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3)
+  ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4;
+
+INSERT IGNORE INTO enduroq_schema_migrations (version, name)
+VALUES
+  (1, 'create_jobs');

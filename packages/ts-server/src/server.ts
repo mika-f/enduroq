@@ -7,6 +7,7 @@ import { JobRepository } from "./repositories/job.js";
 import { Dispatcher } from "./dispatcher.js";
 import { bearerAuth } from "./middlewares/auth.js";
 import type { BackoffParams } from "./utils/backoff.js";
+import { migrateDatabase } from "./migrations.js";
 
 // server
 const PORT = Number(process.env.ENDUROQ_PORT ?? 7225);
@@ -28,6 +29,13 @@ const DB_USER = process.env.ENDUROQ_DB_USER ?? "root";
 const DB_PASS = process.env.ENDUROQ_DB_PASSWORD ?? "";
 const DB_NAME = process.env.ENDUROQ_DB_NAME ?? "enduroq";
 const DB_CONNECTION_LIMIT = Number(process.env.ENDUROQ_DB_CONNECTION ?? 16);
+const DB_AUTO_MIGRATE =
+  (process.env.ENDUROQ_DB_AUTO_MIGRATE ?? "true") !== "false";
+const DB_MIGRATE_ONLY =
+  (process.env.ENDUROQ_DB_MIGRATE_ONLY ?? "false") === "true";
+const DB_MIGRATION_LOCK_TIMEOUT = Number(
+  process.env.ENDUROQ_DB_MIGRATION_LOCK_TIMEOUT_IN_SEC ?? 60,
+);
 
 // queues
 const QUEUES = (process.env.ENDUROQ_QUEUES ?? "default").split(",");
@@ -73,6 +81,9 @@ const main = async () => {
         user: DB_USER,
         name: DB_NAME,
         connectionLimit: DB_CONNECTION_LIMIT,
+        autoMigrate: DB_AUTO_MIGRATE,
+        migrateOnly: DB_MIGRATE_ONLY,
+        migrationLockTimeoutInSec: DB_MIGRATION_LOCK_TIMEOUT,
       },
     },
     "enduroq configuration",
@@ -95,6 +106,22 @@ const main = async () => {
     connectionLimit: DB_CONNECTION_LIMIT,
     timezone: "Z",
   });
+
+  if (DB_AUTO_MIGRATE || DB_MIGRATE_ONLY) {
+    await migrateDatabase(pool, logger, {
+      databaseName: DB_NAME,
+      lockTimeoutInSec: DB_MIGRATION_LOCK_TIMEOUT,
+    });
+  } else {
+    logger.warn("database auto-migration is disabled");
+  }
+
+  if (DB_MIGRATE_ONLY) {
+    logger.info("database migrations completed; exiting");
+    await pool.end();
+    return;
+  }
+
   const jobRepository = new JobRepository(pool, logger);
   const dispatcher = new Dispatcher(jobRepository, QUEUES, logger, {
     ackGraceInSec: ACK_GRACE,
