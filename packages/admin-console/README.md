@@ -7,6 +7,8 @@ polling so the view stays up to date while jobs move through the queue.
 Built with Next.js (App Router) + React + Tailwind CSS, matching the stack used
 by `@enduroq/ts-worker-example`.
 
+![](https://images.natsuneko.com/83d2a4d067b8b1e522a443179036bb3c84d3cd3f6c3addeec19411f15ec41d52.png)
+
 ## Features
 
 - **Job list** — filter by queue and status, paginated (newest first).
@@ -28,10 +30,10 @@ Browser ──/api/jobs──► Next.js route ──Bearer──► Enduroq ser
 
 ## Configuration
 
-| Variable             | Default                 | Description                                                       |
-| -------------------- | ----------------------- | ----------------------------------------------------------------- |
-| `ENDUROQ_SERVER_URL` | `http://127.0.0.1:7225` | Base URL of the Enduroq queue server.                             |
-| `ENDUROQ_AUTH_TOKEN` | _(unset)_               | Bearer token; required only if the queue server enforces auth.    |
+| Variable             | Default                 | Description                                                    |
+| -------------------- | ----------------------- | -------------------------------------------------------------- |
+| `ENDUROQ_SERVER_URL` | `http://127.0.0.1:7225` | Base URL of the Enduroq queue server.                          |
+| `ENDUROQ_AUTH_TOKEN` | _(unset)_               | Bearer token; required only if the queue server enforces auth. |
 
 Copy `.env.example` to `.env.local` and adjust as needed.
 
