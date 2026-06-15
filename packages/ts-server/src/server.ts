@@ -5,6 +5,7 @@ import pino from "pino";
 import mysql from "mysql2/promise";
 import { JobRepository } from "./repositories/job.js";
 import { Dispatcher } from "./dispatcher.js";
+import { bearerAuth } from "./middlewares/auth.js";
 import type { BackoffParams } from "./utils/backoff.js";
 
 // server
@@ -16,6 +17,9 @@ const ACK_GRACE = Number(process.env.ENDUROQ_ACK_GRACE_IN_SEC ?? 30);
 const NACK_BACKOFF = Number(process.env.ENDUROQ_NACK_BACKOFF_IN_SEC ?? 5);
 const TIMEOUT = Number(process.env.ENDUROQ_TIMEOUT_IN_MS ?? 1000 * 10);
 const SERVER_URL = process.env.ENDUROQ_SERVER_URL ?? `http://127.0.0.1:${PORT}`;
+
+// authentication
+const AUTH_TOKEN = process.env.ENDUROQ_AUTH_TOKEN || undefined;
 
 // database
 const DB_HOST = process.env.ENDUROQ_DB_HOST ?? "127.0.0.1";
@@ -130,8 +134,17 @@ const main = async () => {
     }),
   );
 
+  const requireAuth = bearerAuth(AUTH_TOKEN, logger);
+  if (AUTH_TOKEN) {
+    logger.info("bearer authentication enabled for enqueue and status routes");
+  } else {
+    logger.warn(
+      "ENDUROQ_AUTH_TOKEN is not set: enqueue and status routes are unauthenticated",
+    );
+  }
+
   // POST /jobs/:queue
-  app.post("/jobs/:queue", async (c) => {
+  app.post("/jobs/:queue", requireAuth, async (c) => {
     const queue = c.req.param("queue");
     if (!QUEUES.includes(queue)) {
       logger.warn({ queue }, "enqueue rejected: unknown queue");
@@ -238,7 +251,7 @@ const main = async () => {
   });
 
   // GET /jobs/:id
-  app.get("/jobs/:id", async (c) => {
+  app.get("/jobs/:id", requireAuth, async (c) => {
     const id = Number(c.req.param("id"));
     const job = await jobRepository.get(id);
     if (job) {

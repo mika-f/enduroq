@@ -13,6 +13,7 @@ Inspired by [Fireworq](https://github.com/fireworq/fireworq), Enduroq extends th
 - **Configurable queues** — multiple named queues with independent worker pools
 - **Scheduled jobs** — `run_after` defers execution to a future time
 - **Graceful nack** — workers that return `503 Service Unavailable` are back-pressured without consuming a retry
+- **Optional Bearer auth** — protect enqueue and status endpoints with a shared token (`ENDUROQ_AUTH_TOKEN`)
 
 ---
 
@@ -178,6 +179,7 @@ All variables are optional; defaults are shown.
 | -------------------- | ------------------------- | ------------------------------------------------------- |
 | `ENDUROQ_PORT`       | `7225`                    | TCP port the HTTP server listens on                     |
 | `ENDUROQ_SERVER_URL` | `http://127.0.0.1:<port>` | Public base URL sent to workers as the callback address |
+| `ENDUROQ_AUTH_TOKEN` | _(empty)_                 | Bearer token required to enqueue (`POST /jobs/:queue`) and query status (`GET /jobs/:id`). When unset, these routes are unauthenticated. |
 
 #### Database
 
@@ -243,10 +245,36 @@ These are used by the example worker.
 
 ## API Reference
 
+### Authentication
+
+When `ENDUROQ_AUTH_TOKEN` is set, the **enqueue** (`POST /jobs/:queue`) and **status** (`GET /jobs/:id`) endpoints require a Bearer token:
+
+```
+Authorization: Bearer <ENDUROQ_AUTH_TOKEN>
+```
+
+```bash
+curl -X POST http://localhost:7225/jobs/default \
+  -H 'Authorization: Bearer your-secret-token' \
+  -H 'Content-Type: application/json' \
+  -d '{ "url": "http://worker:8080/process", "data": {} }'
+```
+
+Requests with a missing or invalid token receive `401 Unauthorized`:
+
+```json
+{ "error": "unauthorized" }
+```
+
+The worker callback endpoints (`POST /jobs/:id/heartbeat`, `POST /jobs/:id/result`) are **not** covered by Bearer auth; they are authenticated by the per-job `lease_token` instead. When `ENDUROQ_AUTH_TOKEN` is unset, authentication is disabled entirely (backward compatible).
+
+---
+
 ### Enqueue a Job
 
 ```
 POST /jobs/:queue
+Authorization: Bearer <token>   # required when ENDUROQ_AUTH_TOKEN is set
 Content-Type: application/json
 ```
 
@@ -301,6 +329,7 @@ Other response codes:
 
 ```
 GET /jobs/:id
+Authorization: Bearer <token>   # required when ENDUROQ_AUTH_TOKEN is set
 ```
 
 **Response `200 OK`:**
