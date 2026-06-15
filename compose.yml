@@ -14,7 +14,9 @@ services:
       retries: 30
 
   queue:
-    build: ./packages/ts-server
+    build:
+      context: .
+      dockerfile: packages/ts-server/Dockerfile
     depends_on:
       mysql:
         condition: service_healthy
