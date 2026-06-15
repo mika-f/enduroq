@@ -150,12 +150,12 @@ Pre-built images are published to the GitHub Container Registry on every push to
 ghcr.io/mika-f/enduroq
 ```
 
-| Tag | Description |
-| --- | --- |
-| `edge` | Latest commit on `main` |
-| `vX.Y.Z` | Specific release |
-| `X.Y` | Minor-version alias (tracks the latest patch) |
-| `sha-<hash>` | Exact commit SHA |
+| Tag          | Description                                   |
+| ------------ | --------------------------------------------- |
+| `edge`       | Latest commit on `main`                       |
+| `vX.Y.Z`     | Specific release                              |
+| `X.Y`        | Minor-version alias (tracks the latest patch) |
+| `sha-<hash>` | Exact commit SHA                              |
 
 ### Docker Compose (pre-built image)
 
@@ -378,7 +378,7 @@ Content-Type: application/json
 | ------------- | ------ | -------- | --------------------------------------------------- |
 | `url`         | string | Yes      | Worker endpoint URL                                 |
 | `data`        | any    | No       | Arbitrary JSON payload forwarded to the worker      |
-| `max_retries` | number | No       | Maximum retry attempts (default: `3`)               |
+| `max_retries` | number | No       | Maximum retry attempts (default: `0`)               |
 | `run_after`   | string | No       | ISO 8601 timestamp; defer execution until this time |
 
 **Response `201 Created`:**
