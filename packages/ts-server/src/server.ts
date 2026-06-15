@@ -189,6 +189,18 @@ const main = async () => {
     }
 
     const body = await c.req.json();
+
+    if (!body.url || typeof body.url !== "string") {
+      logger.warn({ queue }, "enqueue rejected: missing url");
+      return c.json({ error: "url is required" }, 400);
+    }
+    try {
+      new URL(body.url);
+    } catch {
+      logger.warn({ queue, url: body.url }, "enqueue rejected: invalid url");
+      return c.json({ error: "url must be a valid URL" }, 400);
+    }
+
     const id = await jobRepository.enqueue(
       {
         payload: JSON.stringify(body.data),
