@@ -22,13 +22,14 @@ Inspired by [Fireworq](https://github.com/fireworq/fireworq), Enduroq extends th
 
 1. [Architecture](#architecture)
 2. [Quick Start (Docker Compose)](#quick-start-docker-compose)
-3. [Manual Setup](#manual-setup)
-4. [Environment Variables](#environment-variables)
-5. [API Reference](#api-reference)
-6. [Job States](#job-states)
-7. [Worker SDK (TypeScript)](#worker-sdk-typescript)
-8. [Retry & Backoff](#retry--backoff)
-9. [License](#license)
+3. [Docker Image](#docker-image)
+4. [Manual Setup](#manual-setup)
+5. [Environment Variables](#environment-variables)
+6. [API Reference](#api-reference)
+7. [Job States](#job-states)
+8. [Worker SDK (TypeScript)](#worker-sdk-typescript)
+9. [Retry & Backoff](#retry--backoff)
+10. [License](#license)
 
 ---
 
@@ -108,6 +109,8 @@ cd enduroq
 docker compose up
 ```
 
+> The `queue` service in the bundled `compose.yml` builds from source. To use the pre-built image instead, see [Docker Image](#docker-image).
+
 This starts:
 
 | Service  | Port | Description            |
@@ -136,6 +139,89 @@ Check its status:
 ```bash
 curl http://localhost:7225/jobs/1
 ```
+
+---
+
+## Docker Image
+
+Pre-built images are published to the GitHub Container Registry on every push to `main` and on version tags.
+
+```
+ghcr.io/mika-f/enduroq
+```
+
+| Tag | Description |
+| --- | --- |
+| `edge` | Latest commit on `main` |
+| `vX.Y.Z` | Specific release |
+| `X.Y` | Minor-version alias (tracks the latest patch) |
+| `sha-<hash>` | Exact commit SHA |
+
+### Docker Compose (pre-built image)
+
+```yaml
+services:
+  mysql:
+    image: mysql:8.0
+    command: ["--default-time-zone=+00:00"]
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpw
+      MYSQL_DATABASE: enduroq
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-prootpw"]
+      interval: 3s
+      timeout: 3s
+      retries: 30
+
+  queue:
+    image: ghcr.io/mika-f/enduroq:edge
+    depends_on:
+      mysql:
+        condition: service_healthy
+    environment:
+      ENDUROQ_SERVER_URL: "http://queue:7225"
+      ENDUROQ_DB_HOST: mysql
+      ENDUROQ_DB_PASSWORD: rootpw
+      ENDUROQ_DB_NAME: enduroq
+    ports:
+      - "7225:7225"
+```
+
+### Kubernetes
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: enduroq
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: enduroq
+  template:
+    metadata:
+      labels:
+        app: enduroq
+    spec:
+      containers:
+        - name: enduroq
+          image: ghcr.io/mika-f/enduroq:v1.0.0
+          ports:
+            - containerPort: 7225
+          env:
+            - name: ENDUROQ_SERVER_URL
+              value: "http://enduroq-svc:7225"
+            - name: ENDUROQ_DB_HOST
+              value: "mysql-svc"
+            - name: ENDUROQ_DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: enduroq-secrets
+                  key: db-password
+```
+
+Running multiple replicas is safe: Enduroq uses a MySQL advisory lock so exactly one replica applies pending migrations while the others wait (see `ENDUROQ_DB_MIGRATION_LOCK_TIMEOUT_IN_SEC`). For deployments that require a separate migration step, run the image once with `ENDUROQ_DB_MIGRATE_ONLY=true` as a Kubernetes Job or init container, then start the application with `ENDUROQ_DB_AUTO_MIGRATE=false`.
 
 ---
 
