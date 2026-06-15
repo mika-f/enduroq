@@ -258,7 +258,7 @@ const main = async () => {
       }
     }
 
-    if (status === "failed") {
+    if (status === "failure") {
       const retryable = body.retryable ? Boolean(body.retryable) : true;
       const error = (body.error as string | undefined) ?? "failure";
       const ok = await jobRepository.fail(id, token, retryable, error, BACKOFF);
