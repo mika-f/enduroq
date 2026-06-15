@@ -3,7 +3,11 @@ import { logger as honoLogger } from "hono/logger";
 import { serve } from "@hono/node-server";
 import pino from "pino";
 import mysql from "mysql2/promise";
-import { JobRepository } from "./repositories/job.js";
+import {
+  JobRepository,
+  JOB_STATUSES,
+  type JobStatus,
+} from "./repositories/job.js";
 import { Dispatcher } from "./dispatcher.js";
 import { bearerAuth } from "./middlewares/auth.js";
 import type { BackoffParams } from "./utils/backoff.js";
@@ -297,6 +301,33 @@ const main = async () => {
 
     logger.warn({ jobId: id, status }, "job result rejected: invalid status");
     return c.json({ error: "invalid status" }, 400);
+  });
+
+  // GET /jobs
+  app.get("/jobs", requireAuth, async (c) => {
+    const queue = c.req.query("queue");
+    const status = c.req.query("status");
+
+    if (status && !JOB_STATUSES.includes(status as JobStatus)) {
+      logger.warn({ status }, "list rejected: invalid status");
+      return c.json({ error: "invalid status" }, 400);
+    }
+
+    const limit = Math.min(
+      Math.max(Number(c.req.query("limit")) || 50, 1),
+      100,
+    );
+    const offset = Math.max(Number(c.req.query("offset")) || 0, 0);
+
+    const { jobs, total } = await jobRepository.list({
+      name: queue,
+      status: status as JobStatus | undefined,
+      limit,
+      offset,
+    });
+
+    logger.debug({ queue, status, limit, offset, total }, "jobs listed");
+    return c.json({ jobs, total, limit, offset }, 200);
   });
 
   // GET /jobs/:id

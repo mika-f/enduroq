@@ -439,6 +439,53 @@ Other response codes:
 
 ---
 
+### List Jobs
+
+```
+GET /jobs
+Authorization: Bearer <token>   # required when ENDUROQ_AUTH_TOKEN is set
+```
+
+**Query parameters:**
+
+| Parameter | Type   | Default | Description                                                                               |
+| --------- | ------ | ------- | ----------------------------------------------------------------------------------------- |
+| `queue`   | string | _(all)_ | Filter by queue name                                                                      |
+| `status`  | string | _(all)_ | Filter by status (`queued`, `dispatching`, `running`, `succeeded`, `failed`, `cancelled`) |
+| `limit`   | number | `50`    | Maximum number of jobs to return (clamped to `1`–`100`)                                   |
+| `offset`  | number | `0`     | Number of jobs to skip (for pagination)                                                   |
+
+Jobs are returned newest-first (by descending ID).
+
+**Response `200 OK`:**
+
+```json
+{
+  "jobs": [
+    {
+      "id": 42,
+      "name": "default",
+      "url": "https://worker.example.com/process",
+      "status": "succeeded",
+      "attempt": 1,
+      "max_retries": 3,
+      "run_after": "2026-06-14T10:00:00.000Z",
+      "created_at": "2026-06-14T09:50:00.000Z",
+      "updated_at": "2026-06-14T09:55:00.000Z",
+      "last_error": null,
+      "result": { "ok": true }
+    }
+  ],
+  "total": 1,
+  "limit": 50,
+  "offset": 0
+}
+```
+
+An invalid `status` value returns `400 { "error": "invalid status" }`.
+
+---
+
 ### Get Job Status
 
 ```

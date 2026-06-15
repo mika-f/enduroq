@@ -9,13 +9,23 @@ import { toISO } from "../utils/date.js";
 import { safeParseJSON } from "../utils/json.js";
 import { compute, type BackoffParams } from "../utils/backoff.js";
 
-export type JobStatus =
-  | "queued"
-  | "dispatching"
-  | "running"
-  | "succeeded"
-  | "failed"
-  | "cancelled";
+export const JOB_STATUSES = [
+  "queued",
+  "dispatching",
+  "running",
+  "succeeded",
+  "failed",
+  "cancelled",
+] as const;
+
+export type JobStatus = (typeof JOB_STATUSES)[number];
+
+export interface ListJobsFilter {
+  name?: string | undefined;
+  status?: JobStatus | undefined;
+  limit: number;
+  offset: number;
+}
 
 export interface EnqueueRequest {
   url: string;
@@ -434,5 +444,43 @@ export class JobRepository {
 
     const row = rows[0]!;
     return { ...row, result: safeParseJSON(row.result) } as JobRow;
+  }
+
+  public async list(
+    filter: ListJobsFilter,
+  ): Promise<{ jobs: JobRow[]; total: number }> {
+    const conditions: string[] = [];
+    const params: unknown[] = [];
+    if (filter.name) {
+      conditions.push("name = ?");
+      params.push(filter.name);
+    }
+    if (filter.status) {
+      conditions.push("status = ?");
+      params.push(filter.status);
+    }
+    const where = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
+
+    const [countRows] = await this.pool.query<RowDataPacket[]>(
+      `SELECT COUNT(*) AS total FROM jobs ${where}`,
+      params,
+    );
+    const total = Number(countRows[0]!.total);
+
+    const [rows] = await this.pool.query<RowDataPacket[]>(
+      `
+        SELECT id, name, url, status, attempt, max_retries, run_after, created_at, updated_at, last_error, result
+        FROM jobs
+        ${where}
+        ORDER BY id DESC
+        LIMIT ? OFFSET ?
+      `,
+      [...params, filter.limit, filter.offset],
+    );
+
+    const jobs = rows.map(
+      (row) => ({ ...row, result: safeParseJSON(row.result) }) as JobRow,
+    );
+    return { jobs, total };
   }
 }
