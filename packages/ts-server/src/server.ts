@@ -170,6 +170,16 @@ const main = async () => {
     );
   }
 
+  // GET /health
+  app.get("/health", async (c) => {
+    try {
+      await pool.query("SELECT 1");
+      return c.json({ ok: true }, 200);
+    } catch {
+      return c.json({ ok: false }, 503);
+    }
+  });
+
   // POST /jobs/:queue
   app.post("/jobs/:queue", requireAuth, async (c) => {
     const queue = c.req.param("queue");

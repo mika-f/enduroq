@@ -364,6 +364,26 @@ The worker callback endpoints (`POST /jobs/:id/heartbeat`, `POST /jobs/:id/resul
 
 ---
 
+### Health Check
+
+```
+GET /health
+```
+
+**Response `200 OK`** — server and database are reachable:
+
+```json
+{ "ok": true }
+```
+
+**Response `503 Service Unavailable`** — database is unreachable:
+
+```json
+{ "ok": false }
+```
+
+---
+
 ### Enqueue a Job
 
 ```
