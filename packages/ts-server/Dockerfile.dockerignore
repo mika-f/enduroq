@@ -1,0 +1,20 @@
+# Per-build ignore for the queue (ts-server) image. BuildKit uses this file
+# instead of the root .dockerignore, so the common ignores are repeated here.
+**/.git
+**/.gitignore
+**/node_modules
+**/dist
+**/.next
+**/.turbo
+**/coverage
+**/*.tsbuildinfo
+**/.DS_Store
+**/npm-debug.log*
+**/yarn-debug.log*
+**/yarn-error.log*
+
+# Only the queue server belongs in this image.
+packages/ts-worker
+packages/ts-worker-example
+packages/admin-console
+packages/sql-schema

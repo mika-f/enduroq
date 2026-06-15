@@ -8,7 +8,6 @@ WORKDIR /app
 
 COPY . .
 RUN pnpm install
-RUN cd packages/ts-worker && pnpm run build
 EXPOSE 8000
 
 WORKDIR /app/packages/ts-worker-example
