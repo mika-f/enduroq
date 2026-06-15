@@ -3,7 +3,6 @@
 **/.git
 **/.gitignore
 **/node_modules
-**/dist
 **/.next
 **/.turbo
 **/coverage
