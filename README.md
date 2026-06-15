@@ -466,6 +466,35 @@ Authorization: Bearer <token>   # required when ENDUROQ_AUTH_TOKEN is set
 
 ---
 
+### Cancel a Job
+
+Cancels a job that has not yet reached a terminal state. Jobs in `queued`, `dispatching`, or `running` transition to `cancelled`; the lease token is cleared, so any worker still processing the job receives `409` on its next heartbeat and aborts.
+
+```
+DELETE /jobs/:id
+Authorization: Bearer <token>   # required when ENDUROQ_AUTH_TOKEN is set
+```
+
+**Response `200 OK`** — the job was cancelled:
+
+```json
+{ "ok": true }
+```
+
+**Response `409 Conflict`** — the job is already in a terminal state (`succeeded`, `failed`, or `cancelled`):
+
+```json
+{ "error": "job already in terminal state" }
+```
+
+**Response `404 Not Found`** — no job with that ID exists:
+
+```json
+{ "error": "job not found" }
+```
+
+---
+
 ### Heartbeat (Extend Lease)
 
 Workers call this periodically to prevent their lease from expiring.
@@ -554,6 +583,7 @@ Content-Type: application/json
 | `running`     | Worker acknowledged and is processing                                             |
 | `succeeded`   | Worker reported success                                                           |
 | `failed`      | Permanently failed (retries exhausted, non-retryable error, or `4xx` from worker) |
+| `cancelled`   | Cancelled via `DELETE /jobs/:id` before reaching a terminal state                 |
 
 ---
 

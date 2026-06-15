@@ -9,7 +9,8 @@ CREATE TABLE
       'dispatching',
       'running',
       'succeeded',
-      'failed'
+      'failed',
+      'cancelled'
     ) NOT NULL DEFAULT 'queued',
     attempt INT UNSIGNED NOT NULL DEFAULT 0,
     max_retries INT UNSIGNED NOT NULL DEFAULT 3,
@@ -34,4 +35,5 @@ CREATE TABLE
 
 INSERT IGNORE INTO enduroq_schema_migrations (version, name)
 VALUES
-  (1, 'create_jobs');
+  (1, 'create_jobs'),
+  (2, 'add_cancelled_status');

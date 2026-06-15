@@ -312,6 +312,28 @@ const main = async () => {
     return c.json({ error: "job not found" }, 404);
   });
 
+  // DELETE /jobs/:id
+  app.delete("/jobs/:id", requireAuth, async (c) => {
+    const id = Number(c.req.param("id"));
+    const result = await jobRepository.cancel(id);
+
+    if (result === "cancelled") {
+      logger.info({ jobId: id }, "job cancelled");
+      return c.json({ ok: true }, 200);
+    }
+
+    if (result === "conflict") {
+      logger.warn(
+        { jobId: id },
+        "cancel rejected: job already in terminal state",
+      );
+      return c.json({ error: "job already in terminal state" }, 409);
+    }
+
+    logger.debug({ jobId: id }, "cancel: job not found");
+    return c.json({ error: "job not found" }, 404);
+  });
+
   const server = serve({
     fetch: app.fetch,
     port: PORT,

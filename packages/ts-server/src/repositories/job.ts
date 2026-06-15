@@ -14,7 +14,8 @@ export type JobStatus =
   | "dispatching"
   | "running"
   | "succeeded"
-  | "failed";
+  | "failed"
+  | "cancelled";
 
 export interface EnqueueRequest {
   url: string;
@@ -197,6 +198,54 @@ export class JobRepository {
       `,
       [reason, id, leaseToken],
     );
+  }
+
+  public async cancel(
+    id: number,
+  ): Promise<"cancelled" | "not_found" | "conflict"> {
+    const conn = await this.pool.getConnection();
+    try {
+      await conn.beginTransaction();
+
+      const [rows] = await conn.query<RowDataPacket[]>(
+        `
+          SELECT status FROM jobs WHERE id = ? FOR UPDATE
+        `,
+        [id],
+      );
+      if (rows.length === 0) {
+        await conn.commit();
+        return "not_found";
+      }
+
+      const status = rows[0]!.status as JobStatus;
+      if (
+        status !== "queued" &&
+        status !== "dispatching" &&
+        status !== "running"
+      ) {
+        await conn.commit();
+        return "conflict";
+      }
+
+      await conn.query(
+        `
+          UPDATE jobs
+          SET status = 'cancelled', lease_token = NULL, lease_expires_at = NULL, updated_at = NOW(3)
+          WHERE id = ?
+        `,
+        [id],
+      );
+
+      await conn.commit();
+      return "cancelled";
+    } catch (e) {
+      await conn.rollback();
+      this.log.error({ jobId: id, err: e }, "failed to cancel job");
+      throw e;
+    } finally {
+      conn.release();
+    }
   }
 
   public async heartbeat(

@@ -60,6 +60,23 @@ const MIGRATIONS: readonly Migration[] = [
       `,
     ],
   },
+  {
+    version: 2,
+    name: "add_cancelled_status",
+    statements: [
+      `
+        ALTER TABLE jobs
+        MODIFY COLUMN status ENUM (
+          'queued',
+          'dispatching',
+          'running',
+          'succeeded',
+          'failed',
+          'cancelled'
+        ) NOT NULL DEFAULT 'queued'
+      `,
+    ],
+  },
 ];
 
 export const migrateDatabase = async (
