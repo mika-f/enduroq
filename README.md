@@ -146,9 +146,12 @@ curl http://localhost:7225/jobs/1
 
 Pre-built images are published to the GitHub Container Registry on every push to `main` and on version tags.
 
-```
-ghcr.io/mika-f/enduroq
-```
+| Image                                | Description                                       |
+| ------------------------------------ | ------------------------------------------------- |
+| `ghcr.io/mika-f/enduroq`             | Queue server                                      |
+| `ghcr.io/mika-f/enduroq-admin-console` | Admin console (web UI, see [packages/admin-console](packages/admin-console)) |
+
+Both images share the same tag scheme:
 
 | Tag          | Description                                   |
 | ------------ | --------------------------------------------- |
@@ -185,7 +188,18 @@ services:
       ENDUROQ_DB_NAME: enduroq
     ports:
       - "7225:7225"
+
+  admin-console:
+    image: ghcr.io/mika-f/enduroq-admin-console:edge
+    depends_on:
+      - queue
+    environment:
+      ENDUROQ_SERVER_URL: "http://queue:7225"
+    ports:
+      - "9000:9000"
 ```
+
+The admin console is then available at <http://localhost:9000>.
 
 ### Kubernetes
 
